@@ -1,0 +1,78 @@
+{
+  "kab_kota_list": [
+    {
+      "nama": "BENGKAYANG",
+      "jumlah_titik": 1286,
+      "file": "hotspot-bengkayang.geojson"
+    },
+    {
+      "nama": "KAPUAS HULU",
+      "jumlah_titik": 4349,
+      "file": "hotspot-kapuas-hulu.geojson"
+    },
+    {
+      "nama": "KAYONG UTARA",
+      "jumlah_titik": 6972,
+      "file": "hotspot-kayong-utara.geojson"
+    },
+    {
+      "nama": "KETAPANG",
+      "jumlah_titik": 38213,
+      "file": "hotspot-ketapang.geojson"
+    },
+    {
+      "nama": "KOTA PONTIANAK",
+      "jumlah_titik": 42,
+      "file": "hotspot-kota-pontianak.geojson"
+    },
+    {
+      "nama": "KOTA SINGKAWANG",
+      "jumlah_titik": 211,
+      "file": "hotspot-kota-singkawang.geojson"
+    },
+    {
+      "nama": "KUBU RAYA",
+      "jumlah_titik": 8531,
+      "file": "hotspot-kubu-raya.geojson"
+    },
+    {
+      "nama": "LANDAK",
+      "jumlah_titik": 3510,
+      "file": "hotspot-landak.geojson"
+    },
+    {
+      "nama": "MELAWI",
+      "jumlah_titik": 6023,
+      "file": "hotspot-melawi.geojson"
+    },
+    {
+      "nama": "MEMPAWAH",
+      "jumlah_titik": 1199,
+      "file": "hotspot-mempawah.geojson"
+    },
+    {
+      "nama": "SAMBAS",
+      "jumlah_titik": 795,
+      "file": "hotspot-sambas.geojson"
+    },
+    {
+      "nama": "SANGGAU",
+      "jumlah_titik": 8725,
+      "file": "hotspot-sanggau.geojson"
+    },
+    {
+      "nama": "SEKADAU",
+      "jumlah_titik": 3205,
+      "file": "hotspot-sekadau.geojson"
+    },
+    {
+      "nama": "SINTANG",
+      "jumlah_titik": 4982,
+      "file": "hotspot-sintang.geojson"
+    }
+  ],
+  "periode": {
+    "mulai": "2026-08-01",
+    "selesai": "2026-08-31"
+  }
+}
