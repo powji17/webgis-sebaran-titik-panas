@@ -28,14 +28,17 @@ const baseMaps = {
 };
 
 const state = {
-  index: null,          // isi data/index.json
-  cache: new Map(),      // kab_kota -> geojson mentah (sudah di-fetch)
-  layers: new Map(),     // kab_kota -> L.markerClusterGroup aktif di peta
-  aktif: new Set(),      // kab_kota yang checkbox-nya sedang dicentang
+  index: null,
+  cache: new Map(),
+  layers: new Map(),
+  aktif: new Set(),
   tanggalMulai: null,
   tanggalSelesai: null,
-  adminBoundary: null,   // batas administratif
-  boundaryLayers: new Map(), // kab_kota -> layer batas administratif
+  adminBoundary: null,
+  boundaryLayers: new Map(),
+  boundaryLabels: new Map(),
+  boundaryFeatures: new Map(), // kab_kota -> Feature (parsed once)
+  loading: new Set(),          // kab_kota yang sedang di-load
 };
 
 const map = L.map("peta", {
@@ -58,10 +61,17 @@ async function init() {
   try {
     const batasRes = await fetch(`${DATA_DIR}/batas-administrasi-kalbar.geojson`);
     state.adminBoundary = await batasRes.json();
-    state.boundaryLayers = new Map();
+    // Parse boundary features once, store by kab_kota
+    state.boundaryFeatures = new Map();
+    if (state.adminBoundary.features) {
+      state.adminBoundary.features.forEach(feature => {
+        const kabKota = feature.properties?.kab_kota;
+        if (kabKota) state.boundaryFeatures.set(kabKota, feature);
+      });
+    }
   } catch (error) {
     console.error("Gagal memuat batas administratif:", error);
-    state.adminBoundary = { features: [] }; // Fallback kosong
+    state.adminBoundary = { features: [] };
   }
 
   // Set up UI
@@ -82,6 +92,25 @@ async function init() {
 
   renderDaftarWilayah();
 
+  // Activate default regions: Kota Pontianak and Kota Singkawang
+  const defaultRegions = ["KOTA PONTIANAK", "KOTA SINGKAWANG"];
+  for (const kabKota of defaultRegions) {
+    state.aktif.add(kabKota);
+    await pastikanDataDimuat(kabKota);
+    // Add to map
+    state.layers.get(kabKota).addTo(map);
+    // Add boundary layer to map
+    const boundaryLayer = state.boundaryLayers.get(kabKota);
+    if (boundaryLayer) boundaryLayer.addTo(map);
+    // Add region label to map
+    if (!state.boundaryLabels.has(kabKota)) {
+      addRegionLabel(kabKota);
+    }
+  }
+  updateJumlahSemuaItem();
+  updateStatTotal();
+  syncCheckboxes();
+
   // Basemap switcher
   document.querySelectorAll('input[name="basemap"]').forEach(r => {
     r.addEventListener('change', e => {
@@ -101,236 +130,52 @@ async function init() {
       }
     });
   });
+}
 
-  document.getElementById("btn-clear").addEventListener("click", () => {
-    state.aktif.forEach((kab) => setWilayahAktif(kab, false));
-    syncCheckboxes();
+function addRegionLabel(kabKota) {
+  // Find the feature for this kabKota in adminBoundary
+  const feature = state.adminBoundary.features.find(f => f.properties.kab_kota === kabKota);
+  if (!feature) return;
+  const centroid = getPolygonCentroid(feature);
+  const label = L.marker(centroid, {
+    icon: L.divIcon({
+      className: "region-label-container",
+      html: `<div class="region-fixed-label">${kabKota.replace(/^(Kabupaten|Kota) /, "")}</div>`,
+      iconSize: [null, null],
+      iconAnchor: [0, 0]
+    }),
+    interactive: false
   });
-
-  // Default: aktifkan Kota Pontianak dan Kota Singkawang
-  const defaultAwal = ["KOTA PONTIANAK", "KOTA SINGKAWANG"];
-  for (const nama of defaultAwal) {
-    await setWilayahAktif(nama, true);
-  }
-  syncCheckboxes();
-  updateJumlahSemuaItem();
+  label.addTo(map);
+  state.boundaryLabels.set(kabKota, label);
 }
 
-function renderDaftarWilayah() {
-  const ul = document.getElementById("daftar-wilayah");
-  ul.innerHTML = "";
-
-  const urutan = [...state.index.kab_kota_list].sort((a, b) =>
-    a.nama.localeCompare(b.nama)
-  );
-
-  for (const wilayah of urutan) {
-    const li = document.createElement("li");
-    li.className = "wilayah-item";
-    li.dataset.kab = wilayah.nama;
-
-    li.innerHTML = `
-      <span class="left">
-        <input type="checkbox" id="cb-${slugify(wilayah.nama)}">
-        <span class="nama">${toTitleCase(wilayah.nama)}</span>
-      </span>
-      <span class="jumlah">${wilayah.jumlah_titik.toLocaleString("id-ID")}</span>
-    `;
-
-    const checkbox = li.querySelector("input");
-    checkbox.addEventListener("change", (e) => {
-      setWilayahAktif(wilayah.nama, e.target.checked);
-    });
-
-    // Toggle checkbox when clicking anywhere on the item (except checkbox itself)
-    li.addEventListener("click", (e) => {
-      if (e.target !== checkbox) {
-        checkbox.checked = !checkbox.checked;
-        checkbox.dispatchEvent(new Event("change", { bubbles: true }))
-      }
-    });
-
-    ul.appendChild(li);
-  }
-}
-
-async function setWilayahAktif(kabKota, aktif) {
-  if (aktif) {
-    state.aktif.add(kabKota);
-    await pastikanDataDimuat(kabKota);
-    gambarLayer(kabKota);
-  } else {
-    state.aktif.delete(kabKota);
-    const layer = state.layers.get(kabKota);
-    if (layer) {
-      map.removeLayer(layer);
-      state.layers.delete(kabKota);
-    }
-    // Remove boundary layer if exists
-    const boundaryLayer = state.boundaryLayers.get(kabKota);
-    if (boundaryLayer) {
-      map.removeLayer(boundaryLayer);
-      state.boundaryLayers.delete(kabKota);
-    }
-  }
-  updateStatTotal();
-  updateJumlahSemuaItem();
-  syncCheckboxes();
-}
-
-async function pastikanDataDimuat(kabKota) {
-  if (state.cache.has(kabKota)) return;
-  const wilayah = state.index.kab_kota_list.find((w) => w.nama === kabKota);
-  const res = await fetch(`${DATA_DIR}/${wilayah.file}`);
-  const geojson = await res.json();
-  state.cache.set(kabKota, geojson);
-}
-
-// Palet warna untuk batas administratif
-const ADMIN_BOUNDARY_COLORS = {
-  "BENGKAYANG": "#FF5733",    // Merah terang
-  "MEMPAWAH": "#33FF57",      // Hijau terang
-  "KAPUAS HULU": "#3357FF",  // Biru terang
-  "KAYONG UTARA": "#F033FF",  // Ungu terang
-  "KETAPANG": "#FF33F0",      // Pink terang
-  "KOTA PONTIANAK": "#33FFF0", // Cyan terang
-  "KOTA SINGKAWANG": "#FF8C33", // Oranye terang
-  "KUBU RAYA": "#8C33FF",    // Ungu muda terang
-  "LANDAK": "#33FF8C",       // Hijau muda terang
-  "MELAWI": "#FF338C",       // Merah muda terang
-  "SAMBAS": "#8CFF33",       // Hijau kuning terang
-  "SANGGAU": "#338CFF",      // Biru muda terang
-  "SEKADAU": "#FF3333",      // Merah cerah
-  "SINTANG": "#33FF33"       // Hijau cerah
-};
-
-function gambarLayer(kabKota) {
-  // Hapus layer lama jika ada
-  const lamaLayer = state.layers.get(kabKota);
-  if (lamaLayer) map.removeLayer(lamaLayer);
-
-  // Hapus boundary layer lama jika ada
-  const lamaBoundary = state.boundaryLayers.get(kabKota);
-  if (lamaBoundary) map.removeLayer(lamaBoundary);
-
-  const geojson = state.cache.get(kabKota);
-  if (!geojson) return;
-
-  // Buat cluster untuk titik panas
-  const cluster = L.markerClusterGroup({
-    maxClusterRadius: 50,
-    spiderfyOnMaxZoom: true,
-    iconCreateFunction: (cluster) => {
-      const markers = cluster.getAllChildMarkers();
-      const counts = { High: 0, Medium: 0, Low: 0 };
-      markers.forEach(m => {
-        const conf = m.options.confidence || 'Medium';
-        if (counts[conf] !== undefined) counts[conf]++;
-      });
-      let dominant = 'Medium';
-      let maxCount = 0;
-      for (const [conf, cnt] of Object.entries(counts)) {
-        if (cnt > maxCount) { maxCount = cnt; dominant = conf; }
-      }
-      const total = markers.length;
-      const color = CONFIDENCE_COLOR[dominant] || CONFIDENCE_COLOR.Medium;
-      const size = Math.min(20 + total * 1.5, 40);
-      return L.divIcon({
-        html: `<div style="background:${color}80;width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:11px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.2)">${total}</div>`,
-        className: 'custom-marker-cluster',
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2]
-      });
-    }
-  });
-
-  // Tambahkan boundary polygon
-  const boundaryFeature = state.adminBoundary.features.find(
-    f => f.properties.kab_kota === kabKota
-  );
-
-  if (boundaryFeature) {
-    const boundaryColor = ADMIN_BOUNDARY_COLORS[kabKota] || '#ffea00';
-
-    const boundaryLayer = L.geoJSON(boundaryFeature, {
-      style: {
-        color: boundaryColor,
-        weight: 3,
-        fillColor: boundaryColor,
-        fillOpacity: 0.15
-      }
-    }).addTo(map);
-    boundaryLayer.bringToFront();
-    state.boundaryLayers.set(kabKota, boundaryLayer);
-  }
-
-  // Tambahkan titik panas
-  const fitur = geojson.features.filter((f) =>
-    dalamRentangTanggal(f.properties.tanggal)
-  );
-
-  for (const f of fitur) {
-    const [lon, lat] = f.geometry.coordinates;
-    const confidence = f.properties.confidence;
-    const warna = CONFIDENCE_COLOR[confidence] || "#8b93a1";
-
-    const marker = L.circleMarker([lat, lon], {
-      radius: 5,
-      color: warna,
-      weight: 1,
-      fillColor: warna,
-      fillOpacity: 0.85,
-    });
-    marker.options.confidence = confidence;
-
-    marker.bindPopup(buatIsiPopup(f.properties));
-    cluster.addLayer(marker);
-  }
-
-  cluster.addTo(map);
-  state.layers.set(kabKota, cluster);
-}
-
-function buatIsiPopup(p) {
-  return `
-    <dl class="popup-titik">
-      <dt>Wilayah</dt><dd>${toTitleCase(p.kab_kota)} &middot; ${p.kecamatan}</dd>
-      <dt>Desa</dt><dd>${p.desa}</dd>
-      <dt>Tanggal</dt><dd>${formatTglIndo(p.tanggal)}</dd>
-      <dt>Satelit</dt><dd>${p.satelit}</dd>
-      <dt>Confidence</dt><dd>${p.confidence}</dd>
-    </dl>
-  `;
-}
-
-function dalamRentangTanggal(tanggalIso) {
-  return tanggalIso >= state.tanggalMulai && tanggalIso <= state.tanggalSelesai;
-}
-
-function onTanggalUbah() {
-  const mulai = document.getElementById("tanggal-mulai").value;
-  const selesai = document.getElementById("tanggal-selesai").value;
-  state.tanggalMulai = mulai;
-  state.tanggalSelesai = selesai;
-
-  // Gambar ulang semua layer yang sedang aktif dengan rentang tanggal baru
-  for (const kabKota of state.aktif) {
-    gambarLayer(kabKota);
-  }
-
-  // Load data untuk semua wilayah yang belum di-cache agar hitungan akurat
-  const belumCache = state.index.kab_kota_list
-    .filter(w => !state.cache.has(w.nama))
-    .map(w => w.nama);
-
-  for (const nama of belumCache) {
+function onWilayahToggle(nama, isActive) {
+  if (isActive) {
+    state.aktif.add(nama);
     pastikanDataDimuat(nama).then(() => {
+      // Ensure label is present (in case it was removed earlier)
+      if (!state.boundaryLabels.has(nama)) {
+        addRegionLabel(nama);
+      }
       updateJumlahSemuaItem();
+      updateStatTotal();
+      syncCheckboxes();
     });
+  } else {
+    state.aktif.delete(nama);
+    const layer = state.layers.get(nama);
+    if (layer) map.removeLayer(layer);
+    const boundaryLayer = state.boundaryLayers.get(nama);
+    if (boundaryLayer) map.removeLayer(boundaryLayer);
+    // Also remove the label when region is deactivated
+    const label = state.boundaryLabels.get(nama);
+    if (label) map.removeLayer(label);
+    state.boundaryLabels.delete(nama);
+    updateJumlahSemuaItem();
+    updateStatTotal();
+    syncCheckboxes();
   }
-
-  updateStatTotal();
-  updateJumlahSemuaItem();
 }
 
 function updateStatTotal() {
@@ -340,6 +185,7 @@ function updateStatTotal() {
     if (layer) total += layer.getLayers().length;
   }
   document.getElementById("stat-total").textContent = total.toLocaleString("id-ID");
+  document.getElementById("stat-wilayah").textContent = `${state.aktif.size}/14`;
 }
 
 function updateJumlahSemuaItem() {
@@ -354,17 +200,17 @@ function updateJumlahSemuaItem() {
 
 function hitungJumlahTitik(kabKota) {
   const geojson = state.cache.get(kabKota);
-  if (!geojson) {
+  if (geojson) {
+    // Gunakan data dari cache jika tersedia
+    const fitur = geojson.features.filter((f) =>
+      dalamRentangTanggal(f.properties.tanggal)
+    );
+    return fitur.length;
+  } else {
     // Fallback: gunakan jumlah dari index.json jika data belum di-load
     const wilayah = state.index.kab_kota_list.find((w) => w.nama === kabKota);
     return wilayah ? wilayah.jumlah_titik : 0;
   }
-
-  const fitur = geojson.features.filter((f) =>
-    dalamRentangTanggal(f.properties.tanggal)
-  );
-
-  return fitur.length;
 }
 
 function syncCheckboxes() {
@@ -396,4 +242,282 @@ function formatTglIndo(iso) {
     "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
   ];
   return `${parseInt(d, 10)} ${bulan[parseInt(m, 10) - 1]} ${y}`;
+}
+
+function getPolygonCentroid(feature) {
+  // Get all rings (exterior rings only) from MultiPolygon/Polygon
+  const rings = [];
+  if (feature.geometry.type === 'Polygon') {
+    rings.push(feature.geometry.coordinates[0]);
+  } else if (feature.geometry.type === 'MultiPolygon') {
+    feature.geometry.coordinates.forEach(poly => rings.push(poly[0]));
+  }
+  
+  if (rings.length === 0) {
+    // Fallback to bounds center
+    const geojsonLayer = L.geoJSON(feature);
+    return geojsonLayer.getBounds().getCenter();
+  }
+  
+  // Find the largest ring (main polygon)
+  let largestRing = rings[0];
+  let maxArea = 0;
+  for (const ring of rings) {
+    const area = Math.abs(ringArea(ring));
+    if (area > maxArea) {
+      maxArea = area;
+      largestRing = ring;
+    }
+  }
+
+  // Calculate centroid of the largest ring
+  let x = 0, y = 0;
+  let area = 0;
+  for (let i = 0; i < largestRing.length - 1; i++) {
+    const [x1, y1] = largestRing[i];
+    const [x2, y2] = largestRing[i + 1];
+    const cross = x1 * y2 - x2 * y1;
+    area += cross;
+    x += (x1 + x2) * cross;
+    y += (y1 + y2) * cross;
+  }
+  area *= 0.5;
+  x /= 6 * area;
+  y /= 6 * area;
+
+  return L.latLng(y, x);
+}
+
+function ringArea(ring) {
+  let area = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[i + 1];
+    area += x1 * y2 - x2 * y1;
+  }
+  return area * 0.5;
+}
+
+function dalamRentangTanggal(tanggal) {
+  return tanggal >= state.tanggalMulai && tanggal <= state.tanggalSelesai;
+}
+
+function renderDaftarWilayah() {
+  const container = document.getElementById("daftar-wilayah");
+  container.innerHTML = "";
+
+  state.index.kab_kota_list.forEach((wilayah) => {
+    const item = document.createElement("li");
+    item.className = "wilayah-item";
+    item.dataset.kab = wilayah.nama;
+
+    item.innerHTML = `
+      <div class="left">
+        <input type="checkbox" id="cb-${slugify(wilayah.nama)}">
+        <span class="nama">${toTitleCase(wilayah.nama)}</span>
+      </div>
+      <span class="jumlah">${wilayah.jumlah_titik.toLocaleString("id-ID")}</span>
+    `;
+
+    const cb = item.querySelector("input[type=checkbox]");
+    cb.addEventListener("change", (e) => {
+      onWilayahToggle(wilayah.nama, e.target.checked);
+    });
+
+    item.addEventListener("click", (e) => {
+      if (e.target !== cb) {
+        cb.checked = !cb.checked;
+        onWilayahToggle(wilayah.nama, cb.checked);
+      }
+    });
+
+    container.appendChild(item);
+  });
+
+  // Set up clear button
+  document.getElementById("btn-clear").addEventListener("click", () => {
+    state.aktif.clear();
+    state.layers.forEach((layer) => map.removeLayer(layer));
+    state.boundaryLayers.forEach((layer) => map.removeLayer(layer));
+    state.boundaryLabels.forEach((label) => map.removeLayer(label));
+    state.boundaryLabels.clear();
+    syncCheckboxes();
+    updateStatTotal();
+    updateJumlahSemuaItem();
+  });
+}
+
+async function onTanggalUbah() {
+  const tglMulai = document.getElementById("tanggal-mulai");
+  const tglSelesai = document.getElementById("tanggal-selesai");
+
+  if (tglMulai.value && tglSelesai.value) {
+    state.tanggalMulai = tglMulai.value;
+    state.tanggalSelesai = tglSelesai.value;
+
+    // Refresh active layers only (lazy load)
+    for (const kabKota of state.aktif) {
+      const layer = state.layers.get(kabKota);
+      if (layer) {
+        map.removeLayer(layer);
+        await pastikanDataDimuat(kabKota);
+        layer.addTo(map);
+      }
+      const boundaryLayer = state.boundaryLayers.get(kabKota);
+      if (boundaryLayer) {
+        map.removeLayer(boundaryLayer);
+        boundaryLayer.addTo(map);
+        boundaryLayer.bringToBack();
+      }
+      const label = state.boundaryLabels.get(kabKota);
+      if (label) {
+        map.removeLayer(label);
+        label.addTo(map);
+      }
+    }
+
+    // Update counts for active regions (others show index.json total)
+    updateJumlahSemuaItem();
+    updateStatTotal();
+    syncCheckboxes();
+  }
+}
+
+async function pastikanDataDimuat(kabKota) {
+  if (state.loading.has(kabKota)) {
+    // Already loading, wait for it
+    while (state.loading.has(kabKota)) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return;
+  }
+
+  if (!state.cache.has(kabKota)) {
+    state.loading.add(kabKota);
+    setLoadingState(kabKota, true);
+    try {
+      const res = await fetch(`${DATA_DIR}/hotspot-${slugify(kabKota)}.geojson`);
+      const geojson = await res.json();
+      state.cache.set(kabKota, geojson);
+    } finally {
+      state.loading.delete(kabKota);
+      setLoadingState(kabKota, false);
+    }
+  }
+
+  // Create or update the layer
+  if (!state.layers.has(kabKota)) {
+    const layer = L.markerClusterGroup({
+      spiderfyOnMaxZoom: false,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      maxClusterRadius: 40,
+      disableClusteringAtZoom: 16
+    });
+    state.layers.set(kabKota, layer);
+  } else {
+    state.layers.get(kabKota).clearLayers();
+  }
+
+  // Add markers to the layer
+  const geojson = state.cache.get(kabKota);
+  const fitur = geojson.features.filter((f) =>
+    dalamRentangTanggal(f.properties.tanggal)
+  );
+
+  fitur.forEach((f) => {
+    const marker = L.circleMarker(
+      [f.geometry.coordinates[1], f.geometry.coordinates[0]],
+      {
+        radius: 6,
+        fillColor: CONFIDENCE_COLOR[f.properties.confidence],
+        color: "#ffffff",
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 0.8,
+        className: "hotspot-marker"
+      }
+    );
+
+    marker.bindPopup(`
+      <dl class="popup-titik">
+        <dt>Kabupaten/Kota</dt>
+        <dd>${f.properties.kab_kota}</dd>
+        <dt>Kecamatan</dt>
+        <dd>${f.properties.kecamatan}</dd>
+        <dt>Desa/Kelurahan</dt>
+        <dd>${f.properties.desa}</dd>
+        <dt>Tanggal</dt>
+        <dd>${formatTglIndo(f.properties.tanggal)}</dd>
+        <dt>Waktu (WIB)</dt>
+        <dd>${new Date(f.properties.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</dd>
+        <dt>Satelit</dt>
+        <dd>${f.properties.satelit}</dd>
+        <dt>Tingkat Keyakinan</dt>
+        <dd>${f.properties.confidence}</dd>
+        <dt>Koordinat</dt>
+        <dd>${f.geometry.coordinates[1].toFixed(5)}, ${f.geometry.coordinates[0].toFixed(5)}</dd>
+      </dl>
+    `);
+
+    state.layers.get(kabKota).addLayer(marker);
+  });
+
+  // Add to map only if this region is active
+  if (state.aktif.has(kabKota)) {
+    state.layers.get(kabKota).addTo(map);
+  }
+
+  // Add administrative boundary layer using pre-parsed feature
+  if (!state.boundaryLayers.has(kabKota)) {
+    const feature = state.boundaryFeatures.get(kabKota);
+    if (feature) {
+      const boundaryLayer = L.geoJSON(feature, {
+        style: {
+          color: "#0a7cff",
+          weight: 2,
+          opacity: 0.8,
+          fillOpacity: 0,
+          interactive: false
+        }
+      });
+      state.boundaryLayers.set(kabKota, boundaryLayer);
+    }
+  }
+
+  // Add region label
+  if (!state.boundaryLabels.has(kabKota)) {
+    addRegionLabel(kabKota);
+  }
+
+  // Re-add boundary layer and label to map if region is active
+  if (state.aktif.has(kabKota)) {
+    const boundaryLayer = state.boundaryLayers.get(kabKota);
+    if (boundaryLayer && !map.hasLayer(boundaryLayer)) {
+      boundaryLayer.addTo(map);
+      boundaryLayer.bringToBack();
+    }
+    const label = state.boundaryLabels.get(kabKota);
+    if (label && !map.hasLayer(label)) {
+      label.addTo(map);
+    }
+  }
+}
+
+function setLoadingState(kabKota, isLoading) {
+  const item = document.querySelector(`.wilayah-item[data-kab="${kabKota}"]`);
+  if (item) {
+    const nama = item.querySelector('.nama');
+    if (isLoading) {
+      item.classList.add('loading');
+      if (nama) nama.textContent = `${nama.textContent} ⏳`;
+    } else {
+      item.classList.remove('loading');
+      // Restore original name
+      const wilayah = state.index.kab_kota_list.find(w => w.nama === kabKota);
+      if (wilayah && nama) {
+        nama.textContent = toTitleCase(wilayah.nama);
+      }
+    }
+  }
 }

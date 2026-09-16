@@ -38,6 +38,20 @@
       </div>
     </section>
 
+    <section class="panel" id="panel-statistik">
+      <h2>Statistik</h2>
+      <div class="stat-row">
+        <div class="stat-card" id="stat-points">
+          <span class="stat-card-label">Total hotspot</span>
+          <span class="stat-card-value" id="stat-total">0</span>
+        </div>
+        <div class="stat-card" id="stat-regions">
+          <span class="stat-card-label">Wilayah aktif</span>
+          <span class="stat-card-value" id="stat-wilayah">0/14</span>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" id="panel-wilayah">
       <div class="panel-head-row">
         <h2>Kabupaten / Kota</h2>
@@ -47,18 +61,10 @@
         <!-- diisi lewat JS -->
       </ul>
     </section>
+  </aside>
 
-    <section class="panel" id="panel-legenda">
-      <h2>Tingkat keyakinan</h2>
-      <ul class="legenda-list">
-        <li><span class="dot dot-high"></span> High</li>
-        <li><span class="dot dot-medium"></span> Medium</li>
-        <li><span class="dot dot-low"></span> Low</li>
-      </ul>
-    </section>
-
-    <section class="panel" id="panel-basemap">
-      <h2>Basemap</h2>
+  <main id="peta">
+    <div id="map-controls" class="map-controls">
       <div class="basemap-row">
         <label class="basemap-option">
           <input type="radio" name="basemap" value="Satelit" checked>
@@ -69,17 +75,17 @@
           <span>OSM</span>
         </label>
       </div>
-    </section>
+    </div>
 
-    <footer class="sidebar-foot">
-      <div class="stat">
-        <span class="stat-value" id="stat-total">0</span>
-        <span class="stat-label">titik ditampilkan</span>
+    <div id="map-legend" class="map-legend">
+      <div class="legend-header">Tingkat Keyakinan</div>
+      <div class="legend-row">
+        <span class="legend-item"><span class="dot dot-high"></span> Tinggi</span>
+        <span class="legend-item"><span class="dot dot-medium"></span> Sedang</span>
+        <span class="legend-item"><span class="dot dot-low"></span> Rendah</span>
       </div>
-    </footer>
-  </aside>
-
-  <main id="peta"></main>
+    </div>
+  </main>
 
 </div>
 
