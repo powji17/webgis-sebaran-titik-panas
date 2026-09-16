@@ -37,8 +37,9 @@ const state = {
   adminBoundary: null,
   boundaryLayers: new Map(),
   boundaryLabels: new Map(),
-  boundaryFeatures: new Map(), // kab_kota -> Feature (parsed once)
-  loading: new Set(),          // kab_kota yang sedang di-load
+  boundaryFeatures: new Map(),
+  loading: new Set(),
+  dailyStats: null,    // dari data/daily_stats.json
 };
 
 const map = L.map("peta", {
@@ -72,6 +73,15 @@ async function init() {
   } catch (error) {
     console.error("Gagal memuat batas administratif:", error);
     state.adminBoundary = { features: [] };
+  }
+
+  // Load daily stats for dynamic counts on inactive regions
+  try {
+    const statsRes = await fetch(`${DATA_DIR}/daily_stats.json`);
+    state.dailyStats = await statsRes.json();
+  } catch (error) {
+    console.warn("Gagal memuat daily stats:", error);
+    state.dailyStats = {};
   }
 
   // Set up UI
@@ -201,13 +211,22 @@ function updateJumlahSemuaItem() {
 function hitungJumlahTitik(kabKota) {
   const geojson = state.cache.get(kabKota);
   if (geojson) {
-    // Gunakan data dari cache jika tersedia
+    // Gunakan data dari cache jika tersedia (filter by tanggal)
     const fitur = geojson.features.filter((f) =>
       dalamRentangTanggal(f.properties.tanggal)
     );
     return fitur.length;
+  } else if (state.dailyStats) {
+    // Gunakan daily_stats.json untuk hitung akurat per rentang tanggal
+    let total = 0;
+    for (const [date, stats] of Object.entries(state.dailyStats)) {
+      if (dalamRentangTanggal(date)) {
+        total += stats[kabKota] || 0;
+      }
+    }
+    return total;
   } else {
-    // Fallback: gunakan jumlah dari index.json jika data belum di-load
+    // Fallback terakhir: total dari index.json
     const wilayah = state.index.kab_kota_list.find((w) => w.nama === kabKota);
     return wilayah ? wilayah.jumlah_titik : 0;
   }
