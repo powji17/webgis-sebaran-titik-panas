@@ -492,6 +492,43 @@ html, body {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
 }
 
+/* Layer Control Section */
+.layer-control-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layer-checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.layer-checkbox-option:hover {
+  background: var(--bg-panel-raised);
+  border-color: var(--border);
+}
+
+.layer-checkbox-option input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.layer-checkbox-option span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 /* Responsive */
 
 @media (max-width: 720px) {

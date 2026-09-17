@@ -40,6 +40,9 @@ const state = {
   boundaryFeatures: new Map(),
   loading: new Set(),
   dailyStats: null,    // dari data/daily_stats.json
+  showHotspot: true,   // toggle layer hotspot
+  showBoundary: true,  // toggle layer batas daerah
+  showLabel: true,     // toggle layer label daerah
 };
 
 const map = L.map("peta", {
@@ -51,9 +54,23 @@ L.control.zoom({ position: "topright" }).addTo(map);
 // Initialize base map (Satelit) as default
 baseMaps["Satelit"].addTo(map);
 
-init();
-
 async function init() {
+  // Set up layer toggle controls
+  document.getElementById("toggle-hotspot").addEventListener("change", function(e) {
+    state.showHotspot = e.target.checked;
+    toggleHotspotLayers();
+  });
+
+  document.getElementById("toggle-boundary").addEventListener("change", function(e) {
+    state.showBoundary = e.target.checked;
+    toggleBoundaryLayers();
+  });
+
+  document.getElementById("toggle-label").addEventListener("change", function(e) {
+    state.showLabel = e.target.checked;
+    toggleLabelLayers();
+  });
+
   // Load index.json
   const res = await fetch(`${DATA_DIR}/index.json`);
   state.index = await res.json();
@@ -92,28 +109,32 @@ async function init() {
   const tglSelesai = document.getElementById("tanggal-selesai");
   tglMulai.min = tglSelesai.min = state.index.periode.mulai;
   tglMulai.max = tglSelesai.max = state.index.periode.selesai;
-  tglMulai.value = state.index.periode.mulai;
-  tglSelesai.value = state.index.periode.selesai;
-  state.tanggalMulai = state.index.periode.mulai;
-  state.tanggalSelesai = state.index.periode.selesai;
+  tglMulai.value = "2026-08-01";
+  tglSelesai.value = "2026-08-01";
+  state.tanggalMulai = "2026-08-01";
+  state.tanggalSelesai = "2026-08-01";
 
   tglMulai.addEventListener("change", onTanggalUbah);
   tglSelesai.addEventListener("change", onTanggalUbah);
 
   renderDaftarWilayah();
 
-  // Activate default regions: Kota Pontianak and Kota Singkawang
-  const defaultRegions = ["KOTA PONTIANAK", "KOTA SINGKAWANG"];
-  for (const kabKota of defaultRegions) {
+  // Activate ALL regions by default
+  for (const wilayah of state.index.kab_kota_list) {
+    const kabKota = wilayah.nama;
     state.aktif.add(kabKota);
     await pastikanDataDimuat(kabKota);
-    // Add to map
-    state.layers.get(kabKota).addTo(map);
-    // Add boundary layer to map
+    // Add to map if toggles permit
+    const layer = state.layers.get(kabKota);
+    if (layer && state.showHotspot) layer.addTo(map);
+    
     const boundaryLayer = state.boundaryLayers.get(kabKota);
-    if (boundaryLayer) boundaryLayer.addTo(map);
-    // Add region label to map
-    if (!state.boundaryLabels.has(kabKota)) {
+    if (boundaryLayer && state.showBoundary) {
+      boundaryLayer.addTo(map);
+      boundaryLayer.bringToBack();
+    }
+    
+    if (!state.boundaryLabels.has(kabKota) && state.showLabel) {
       addRegionLabel(kabKota);
     }
   }
@@ -142,6 +163,41 @@ async function init() {
   });
 }
 
+function toggleHotspotLayers() {
+  state.layers.forEach((layer, kabKota) => {
+    if (state.showHotspot && state.aktif.has(kabKota)) {
+      if (!map.hasLayer(layer)) layer.addTo(map);
+    } else {
+      if (map.hasLayer(layer)) map.removeLayer(layer);
+    }
+  });
+  // Update statistics when hotspot layer is toggled
+  updateStatTotal();
+}
+
+function toggleBoundaryLayers() {
+  state.boundaryLayers.forEach((layer, kabKota) => {
+    if (state.showBoundary && state.aktif.has(kabKota)) {
+      if (!map.hasLayer(layer)) {
+        layer.addTo(map);
+        layer.bringToBack();
+      }
+    } else {
+      if (map.hasLayer(layer)) map.removeLayer(layer);
+    }
+  });
+}
+
+function toggleLabelLayers() {
+  state.boundaryLabels.forEach((label, kabKota) => {
+    if (state.showLabel && state.aktif.has(kabKota)) {
+      if (!map.hasLayer(label)) label.addTo(map);
+    } else {
+      if (map.hasLayer(label)) map.removeLayer(label);
+    }
+  });
+}
+
 function addRegionLabel(kabKota) {
   // Find the feature for this kabKota in adminBoundary
   const feature = state.adminBoundary.features.find(f => f.properties.kab_kota === kabKota);
@@ -156,7 +212,10 @@ function addRegionLabel(kabKota) {
     }),
     interactive: false
   });
-  label.addTo(map);
+  // Add to map only if label layer is enabled
+  if (state.showLabel) {
+    label.addTo(map);
+  }
   state.boundaryLabels.set(kabKota, label);
 }
 
@@ -167,6 +226,20 @@ function onWilayahToggle(nama, isActive) {
       // Ensure label is present (in case it was removed earlier)
       if (!state.boundaryLabels.has(nama)) {
         addRegionLabel(nama);
+      }
+      // Add layers to map only if respective layer is enabled
+      const layer = state.layers.get(nama);
+      if (layer && state.showHotspot && !map.hasLayer(layer)) {
+        layer.addTo(map);
+      }
+      const boundaryLayer = state.boundaryLayers.get(nama);
+      if (boundaryLayer && state.showBoundary && !map.hasLayer(boundaryLayer)) {
+        boundaryLayer.addTo(map);
+        boundaryLayer.bringToBack();
+      }
+      const label = state.boundaryLabels.get(nama);
+      if (label && state.showLabel && !map.hasLayer(label)) {
+        label.addTo(map);
       }
       updateJumlahSemuaItem();
       updateStatTotal();
@@ -190,9 +263,12 @@ function onWilayahToggle(nama, isActive) {
 
 function updateStatTotal() {
   let total = 0;
-  for (const kabKota of state.aktif) {
-    const layer = state.layers.get(kabKota);
-    if (layer) total += layer.getLayers().length;
+  // Only count hotspot markers when the hotspot layer is enabled
+  if (state.showHotspot) {
+    for (const kabKota of state.aktif) {
+      const layer = state.layers.get(kabKota);
+      if (layer) total += layer.getLayers().length;
+    }
   }
   document.getElementById("stat-total").textContent = total.toLocaleString("id-ID");
   document.getElementById("stat-wilayah").textContent = `${state.aktif.size}/14`;
@@ -356,9 +432,16 @@ function renderDaftarWilayah() {
   // Set up clear button
   document.getElementById("btn-clear").addEventListener("click", () => {
     state.aktif.clear();
-    state.layers.forEach((layer) => map.removeLayer(layer));
-    state.boundaryLayers.forEach((layer) => map.removeLayer(layer));
-    state.boundaryLabels.forEach((label) => map.removeLayer(label));
+    // Remove all layers (hotspot, boundary, label) according to toggles
+    state.layers.forEach((layer) => {
+      if (state.showHotspot) map.removeLayer(layer);
+    });
+    state.boundaryLayers.forEach((layer) => {
+      if (state.showBoundary) map.removeLayer(layer);
+    });
+    state.boundaryLabels.forEach((label) => {
+      if (state.showLabel) map.removeLayer(label);
+    });
     state.boundaryLabels.clear();
     syncCheckboxes();
     updateStatTotal();
@@ -374,24 +457,24 @@ async function onTanggalUbah() {
     state.tanggalMulai = tglMulai.value;
     state.tanggalSelesai = tglSelesai.value;
 
-    // Refresh active layers only (lazy load)
+    // Refresh active layers only (lazy load) respecting layer visibility flags
     for (const kabKota of state.aktif) {
       const layer = state.layers.get(kabKota);
       if (layer) {
         map.removeLayer(layer);
         await pastikanDataDimuat(kabKota);
-        layer.addTo(map);
+        if (state.showHotspot) layer.addTo(map);
       }
       const boundaryLayer = state.boundaryLayers.get(kabKota);
       if (boundaryLayer) {
         map.removeLayer(boundaryLayer);
-        boundaryLayer.addTo(map);
+        if (state.showBoundary) boundaryLayer.addTo(map);
         boundaryLayer.bringToBack();
       }
       const label = state.boundaryLabels.get(kabKota);
       if (label) {
         map.removeLayer(label);
-        label.addTo(map);
+        if (state.showLabel) label.addTo(map);
       }
     }
 
@@ -482,8 +565,8 @@ async function pastikanDataDimuat(kabKota) {
     state.layers.get(kabKota).addLayer(marker);
   });
 
-  // Add to map only if this region is active
-  if (state.aktif.has(kabKota)) {
+  // Add to map only if this region is active and hotspot layer is enabled
+  if (state.aktif.has(kabKota) && state.showHotspot) {
     state.layers.get(kabKota).addTo(map);
   }
 
@@ -493,7 +576,7 @@ async function pastikanDataDimuat(kabKota) {
     if (feature) {
       const boundaryLayer = L.geoJSON(feature, {
         style: {
-          color: "#0a7cff",
+          color: "#93c5fd",
           weight: 2,
           opacity: 0.8,
           fillOpacity: 0,
@@ -509,15 +592,15 @@ async function pastikanDataDimuat(kabKota) {
     addRegionLabel(kabKota);
   }
 
-  // Re-add boundary layer and label to map if region is active
+  // Re-add boundary layer and label to map if region is active and respective layer is enabled
   if (state.aktif.has(kabKota)) {
     const boundaryLayer = state.boundaryLayers.get(kabKota);
-    if (boundaryLayer && !map.hasLayer(boundaryLayer)) {
+    if (boundaryLayer && !map.hasLayer(boundaryLayer) && state.showBoundary) {
       boundaryLayer.addTo(map);
       boundaryLayer.bringToBack();
     }
     const label = state.boundaryLabels.get(kabKota);
-    if (label && !map.hasLayer(label)) {
+    if (label && !map.hasLayer(label) && state.showLabel) {
       label.addTo(map);
     }
   }
@@ -540,3 +623,5 @@ function setLoadingState(kabKota, isLoading) {
     }
   }
 }
+
+init();
