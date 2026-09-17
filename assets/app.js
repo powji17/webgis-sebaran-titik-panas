@@ -141,6 +141,7 @@ async function init() {
   updateJumlahSemuaItem();
   updateStatTotal();
   syncCheckboxes();
+  updateAlertCard();
 
   // Basemap switcher
   document.querySelectorAll('input[name="basemap"]').forEach(r => {
@@ -173,6 +174,8 @@ function toggleHotspotLayers() {
   });
   // Update statistics when hotspot layer is toggled
   updateStatTotal();
+  // Also update alert card
+  updateAlertCard();
 }
 
 function toggleBoundaryLayers() {
@@ -482,6 +485,8 @@ async function onTanggalUbah() {
     updateJumlahSemuaItem();
     updateStatTotal();
     syncCheckboxes();
+    // Update alert card after date change
+    updateAlertCard();
   }
 }
 
@@ -621,6 +626,31 @@ function setLoadingState(kabKota, isLoading) {
         nama.textContent = toTitleCase(wilayah.nama);
       }
     }
+  }
+}
+
+function updateAlertCard() {
+  let maxCount = -1;
+  let maxRegion = null;
+  if (state.index && state.index.kab_kota_list) {
+    for (const wilayah of state.index.kab_kota_list) {
+      const kab = wilayah.nama;
+      const count = hitungJumlahTitik(kab);
+      if (count > maxCount) {
+        maxCount = count;
+        maxRegion = kab;
+      }
+    }
+  }
+
+  const alertContent = document.getElementById('alert-content');
+  if (maxRegion !== null) {
+    alertContent.innerHTML = `
+      <span class="region-name">${toTitleCase(maxRegion)}</span>
+      <span class="region-count">${maxCount.toLocaleString('id-ID')}</span>
+    `;
+  } else {
+    alertContent.textContent = '-';
   }
 }
 
