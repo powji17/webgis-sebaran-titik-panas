@@ -35,18 +35,148 @@ html, body {
 
 /* ---------- Sidebar ---------- */
 
-#sidebar {
-  width: 340px;
-  flex: 0 0 340px;
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(51, 87, 255, 0.12);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+}
+
+.sidebar-toggle:hover {
   background: var(--bg-panel);
-  border-right: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(51, 87, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.sidebar-toggle:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sidebar-toggle svg {
+  stroke: var(--text-primary);
+  transition: stroke 0.2s ease;
+}
+
+.sidebar-toggle:hover svg {
+  stroke: var(--accent);
+}
+
+/* Floating Sidebar Panel */
+.floating-sidebar {
+  position: fixed;
+  top: 16px;  /* added margin top */
+  left: 16px; /* added margin left */
+  width: 360px;
+  height: calc(100vh - 32px); /* bottom margin */
+  max-height: calc(100vh - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
-  box-shadow: 4px 0 20px rgba(51, 87, 255, 0.05);
-  z-index: 10;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  border-radius: 16px;
+  box-shadow: 8px 0 40px rgba(51, 87, 255, 0.12), 0 0 0 1px rgba(51, 87, 255, 0.05);
+  z-index: 1050;
+  transform: translateX(calc(-100% - 32px));
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.floating-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.floating-sidebar.open {
+  transform: translateX(0);
+}
+
+.floating-sidebar .sidebar-head {
+  position: relative;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, #f8faff 0%, #eef3ff 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.floating-sidebar .sidebar-close {
+  position: static;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.floating-sidebar .sidebar-close:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.floating-sidebar .sidebar-close:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.floating-sidebar .sidebar-close svg {
+  stroke: currentColor;
+}
+
+/* Sidebar Backdrop (Mobile) */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: none;
+  z-index: 1040;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.sidebar-backdrop.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Desktop: sidebar bersifat floating, backdrop tidak diperlukan
+   agar peta tidak tertutup efek gelap saat sidebar aktif.
+   Backdrop hanya dipakai di mobile (<=720px). */
+@media (min-width: 721px) {
+  .sidebar-backdrop,
+  .sidebar-backdrop.visible {
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
 
 #sidebar::-webkit-scrollbar {
@@ -59,10 +189,46 @@ html, body {
   background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
 }
 
-.sidebar-head h1 {
-  font-size: 22px;
+.sidebar-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-brand-icon {
+  width: 26px;
+  height: 26px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-brand-icon svg {
+  stroke: var(--accent);
+}
+
+.sidebar-brand-label {
+  font-size: 11px;
   font-weight: 600;
-  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.sidebar-head-body h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 2px;
   letter-spacing: -0.01em;
   color: #1e3a8a;
 }
@@ -257,19 +423,49 @@ html, body {
   font-weight: 500;
 }
 
-/* Map Controls (floating bottom-left, above legend) */
+/* Map Controls (floating top-right below alert-card) */
 .map-controls {
   position: absolute;
-  bottom: 55px;
-  left: 16px;
+  top: 96px;
+  right: 16px;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 6px 10px;
   box-shadow: 0 4px 16px rgba(51, 87, 255, 0.12);
   backdrop-filter: blur(8px);
   z-index: 1000;
   pointer-events: auto;
+}
+
+/* Leaflet Zoom Control (floating right below map-controls) */
+.leaflet-top.leaflet-right {
+  top: 152px !important;
+  right: 16px !important;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(51, 87, 255, 0.12) !important;
+  overflow: hidden;
+  margin: 0 !important;
+  backdrop-filter: blur(8px);
+}
+
+.leaflet-control-zoom a {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  color: var(--text-primary) !important;
+  width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  border-bottom-color: var(--border) !important;
+  transition: all 0.2s ease;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: #ffffff !important;
+  color: var(--accent) !important;
 }
 
 /* Wilayah list */
@@ -391,18 +587,19 @@ html, body {
 }
 
 .region-fixed-label {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
   color: #1e3a8a;
-  border: 1px solid #93c5fd;
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 10px;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
   font-weight: 600;
   text-align: center;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(51, 87, 255, 0.15);
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 16px rgba(51, 87, 255, 0.2);
   pointer-events: none;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
   min-width: 80px;
   max-width: 200px;
 }
@@ -443,19 +640,19 @@ html, body {
   font-weight: 500;
 }
 
-/* Map Legend (floating bottom-left) */
+/* Map Legend (floating bottom-right above attribution) */
 .map-legend {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
+  bottom: 26px;
+  right: 16px;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 6px 10px;
   box-shadow: 0 4px 16px rgba(51, 87, 255, 0.12);
   backdrop-filter: blur(8px);
   z-index: 1000;
-  pointer-events: none;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -492,14 +689,14 @@ html, body {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
 }
 
-/* Floating Card for Alert (Top-Left of Map) */
+/* Floating Card for Alert (Top-Right of Map) */
 .floating-card {
   position: absolute;
   top: 16px;
-  left: 16px;
+  right: 16px;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 14px;
   box-shadow: 0 4px 20px rgba(51, 87, 255, 0.15);
   backdrop-filter: blur(8px);
@@ -580,35 +777,85 @@ html, body {
   color: var(--text-primary);
 }
 
-/* Responsive */
+/* Responsive — Mobile (max-width: 720px) */
 
 @media (max-width: 720px) {
-  #app { flex-direction: column; }
-  #sidebar {
-    width: 100%;
-    flex: 0 0 auto;
-    max-height: 45vh;
+  /* Layout: peta full screen, sama persis dengan desktop */
+  #app {
+    flex-direction: row;
   }
-  #peta { flex: 1; }
 
+  #peta {
+    flex: 1;
+    height: 100%;
+  }
+
+  /* Sidebar: floating drawer dari kiri, sama dengan desktop */
+  .floating-sidebar {
+    width: calc(100vw - 32px);
+    max-width: 360px;
+    height: calc(100vh - 32px);
+    max-height: calc(100vh - 32px);
+    top: 16px;
+    left: 16px;
+    border-radius: 16px;
+  }
+
+  /* Sidebar toggle tetap di kiri atas dan berada di belakang sidebar floating */
+  .sidebar-toggle {
+    top: 16px;
+    left: 16px;
+    z-index: 1000;
+  }
+
+  /* Backdrop gelap blur saat sidebar terbuka di mobile */
+  @media (max-width: 720px) {
+    .sidebar-backdrop {
+      display: block;
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+    }
+    .sidebar-backdrop.visible {
+      pointer-events: auto;
+    }
+  }
+
+  /* Floating card kanan atas — sama dengan desktop */
+  .floating-card {
+    top: 16px;
+    right: 16px;
+    max-width: calc(100vw - 96px);
+  }
+
+  /* Basemap control — tepat di bawah floating card */
   .map-controls {
-    bottom: 12px;
-    left: 12px;
-    right: 12px;
-    padding: 5px 8px;
-  }
-  .basemap-row {
-    justify-content: center;
+    top: 96px;
+    right: 16px;
+    bottom: auto;
+    left: auto;
+    width: auto;
   }
 
-  .map-legend {
-    bottom: 60px;
-    left: 12px;
-    right: 12px;
-    padding: 5px 8px;
+  .basemap-row {
+    justify-content: flex-start;
   }
+
+  /* Leaflet zoom — di bawah basemap control */
+  .leaflet-top.leaflet-right {
+    top: 152px !important;
+    right: 16px !important;
+  }
+
+  /* Legend — kanan bawah tepat di atas watermark */
+  .map-legend {
+    bottom: 26px;
+    right: 16px;
+    left: auto;
+    width: auto;
+  }
+
   .legend-row {
-    justify-content: center;
+    justify-content: flex-start;
     gap: 12px;
   }
 }

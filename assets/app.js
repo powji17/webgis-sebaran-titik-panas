@@ -55,6 +55,36 @@ L.control.zoom({ position: "topright" }).addTo(map);
 baseMaps["Satelit"].addTo(map);
 
 async function init() {
+  // Setup Sidebar Toggle functionality
+  const sidebar = document.getElementById("sidebar");
+  const sidebarToggle = document.getElementById("sidebar-toggle");
+  const sidebarClose = document.getElementById("sidebar-close");
+  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+
+  function openSidebar() {
+    sidebar.classList.add("open");
+    sidebarBackdrop.classList.add("visible");
+  }
+
+  function closeSidebar() {
+    sidebar.classList.remove("open");
+    sidebarBackdrop.classList.remove("visible");
+  }
+
+  sidebarToggle.addEventListener("click", () => {
+    if (sidebar.classList.contains("open")) {
+      closeSidebar();
+    } else {
+      openSidebar();
+    }
+  });
+
+  sidebarClose.addEventListener("click", closeSidebar);
+  sidebarBackdrop.addEventListener("click", closeSidebar);
+
+  // Automatically open sidebar on initial load for better UX
+  openSidebar();
+
   // Set up layer toggle controls
   document.getElementById("toggle-hotspot").addEventListener("change", function(e) {
     state.showHotspot = e.target.checked;
@@ -581,10 +611,11 @@ async function pastikanDataDimuat(kabKota) {
     if (feature) {
       const boundaryLayer = L.geoJSON(feature, {
         style: {
-          color: "#93c5fd",
-          weight: 2,
-          opacity: 0.8,
-          fillOpacity: 0,
+          color: "#3357FF",
+          fillColor: "#3357FF",
+          weight: 2.2,
+          opacity: 0.85,
+          fillOpacity: 0.08,
           interactive: false
         }
       });
